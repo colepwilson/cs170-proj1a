@@ -1,0 +1,25 @@
+Group Members: Cole Wilson
+
+In rwlock.h:
+    - To RWLock class, added member variables:
+        pthread_mutex_t mutex -> for locking around non-atomic operations
+        pthread_cond_t readers_ok -> for indicating read ok to readers
+        pthread_cond_t writers_ok -> for indicating write ok to writers
+        int active_readers -> for keeping track of number of active readers
+        int waiting_writers -> for keeping track of how many writers are waiting to write
+        bool active_writer -> for indicating whether or not a writer is actively writing
+
+In rwlock.cc:
+    - Constructor: initializes ints to zero, bool to false, and inits mutex and conds with NULL
+    - Destructor: destroys mutex and conds
+    - startRead: locks mutex, prevents read until there is no active writer and no waiting writers, increments active readers (since this is a new reader), unlocks mutex
+    - doneRead: locks mutex, decrements active readers (since this read has concluded), signals write ok if no other readers (so write does not interfere with read), unlocks mutex
+    - startWrite: locks mutex, increments waiting writers (since this is a new waiting writer), prevents write until no active writer or readers, decrements waiting writers (since this writer is no longer waiting; it's active),
+                  sets active writer to true (this writer writing), unlocks mutex
+    - endWrite: locks mutex, sets active writer to false (this write concluded), if there are any writers waiting -> signal write ok, else broadcast read ok, unlock mutex
+
+Essentially, we need to ensure that the member variables are initialized and destroyed properly in the ctor/dtor. Then, for each other function, we need to ensure that only one read or write is taking place at a time, as to prevent race conditions.
+Any read must take place while a write is not taking place, and after any writes that asked to start prior to the read asking to start, and vice versa, and we increment active readers when a reader begins reading. Then, when a read ends, we decrement
+active readers and, if there are no readers in the queue, we signal the writers that write is ok and unlock the mutex. We allow write when there is no other active writer and no reader ahead of this writer in the queue, then we signal write ok.
+Around this block, we lock the mutex, increment and then decrement waiting writers since a writer is not waiting while active, then set active writer true and unlock the mutex, as this writer may now write. When a write is done, we lock the mutex,
+set active writer false since this write has concluded, signal write ok if there are any more writers waiting to write, else broadcast read ok if no writers waiting, and then finally we unlock the mutex.
